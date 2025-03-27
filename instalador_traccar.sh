@@ -21,6 +21,11 @@
 # * Validação de campos sensíveis
 # * Mensagens mais informativas
 # * Verificação de erros
+#
+# [2025-03-27] Michaell Oliveira
+# * Ignorar domínio caso não seja informado
+# * Melhoria na informação dos processos ao usuário
+# * Correção de pequenos bugs
 
 set -e  # Para encerrar o script em caso de erro
 
@@ -34,20 +39,21 @@ display_banner() {
     echo "   ██║   ██║  ██║██║  ██║╚██████╗╚██████╗██║  ██║██║  ██║"
     echo "   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝╚═════╝ ╚═╝  ╚═╝ v2.2"
     echo ""
-    echo "Instalador do Traccar - 1.1.4"
+    echo "Instalador do Traccar - 1.1.5"
     echo "O script sempre vai buscar a última versão Traccar disponível no GitHub caso não informe."
     echo "O script otimizará a memória do Java (caso aceite), leia mais aqui: https://www.traccar.org/optimization/"
+    echo "Se informar domínio certifique-se que esteja apontado ao servidor pelo menos com 30 minutos de antecedẽncia."
     echo "!!!Recomendado usar servidor formatado!!!"
     read -p "Para iniciar, tecle ENTER"
 }
 
 TOTAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')  # Memória total em KB
 TOTAL_MEMORY_MB=$((TOTAL_MEMORY_KB / 1024))  # Converter para MB
+IP_PUBLICO=$(curl -s https://api64.ipify.org)
 
 get_user_input() {
     
     read -p "Digite a versão do Traccar (Ex: 6.6 ou deixe em branco para a última versão): " LATEST_VERSION
-
     while [[ -z "$DB_TYPE" ]]; do
         read -p "Escolha o banco de dados (mysql/postgresql): " DB_TYPE
     done
@@ -59,14 +65,11 @@ get_user_input() {
     done
     while [[ -z "$DB_PASS" ]]; do
         read -sp "Digite a senha para o usuário do banco: " DB_PASS
-        echo ""
     done
-    while [[ -z "$DOMAIN" ]]; do
-        read -p "Digite seu domínio (ex: rastreamento.meudominio.com): " DOMAIN
-    done
+    read -p "Digite seu domínio (ex: rastreamento.meudominio.com ou deixe em branco para ignorar): " DOMAIN
     echo "A memória total do servidor é: ${TOTAL_MEMORY_MB}MB"
     read -p "Digite a porcentagem da memória do servidor que deseja alocar para o Java (exemplo: 60 para 60%) (Deixe em branco para não editar o serviço): " MEMORY_PERCENT
-
+    echo ""
 }
 
 install_dependencies() {
@@ -120,6 +123,12 @@ download_traccar() {
 configure_traccar() {
     DB_DRIVER=""
     DB_URL=""
+    WEB_URL="http://$IP_PUBLICO:8082"
+
+    if [ ! -z "$DOMAIN" ]; then
+        WEB_URL="https://$DOMAIN"
+    fi
+    
     if [[ "$DB_TYPE" == "mysql" ]]; then
         DB_DRIVER="com.mysql.cj.jdbc.Driver"
         DB_URL="jdbc:mysql://localhost:3306/$DB_NAME?allowPublicKeyRetrieval=true&amp;serverTimezone=UTC&amp;useSSL=false&amp;allowMultiQueries=true&amp;autoReconnect=true&amp;useUnicode=yes&amp;characterEncoding=UTF-8&amp;sessionVariables=sql_mode=''"
@@ -127,6 +136,7 @@ configure_traccar() {
         DB_DRIVER="org.postgresql.Driver"
         DB_URL="jdbc:postgresql://localhost:5432/$DB_NAME"
     fi
+
     sudo tee /opt/traccar/conf/traccar.xml > /dev/null <<EOL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
@@ -139,18 +149,21 @@ configure_traccar() {
     <entry key='processing.copyAttributes'>power,ignition,battery,blocked,driverUniqueId</entry> <!-- Lista de atributos a serem copiados se estiverem ausentes. Os nomes dos atributos devem ser separados por vírgula. Por exemplo "power,ignition,battery" -->
     <entry key='processing.remoteAddress.enable'>true</entry> <!--  informações de endereços IP do dispositivo -->
     <entry key='distance.enable'>true</entry> <!-- Calcule e acumule a distância percorrida para todos os dispositivos. O valor da distância está em metros e é armazenado nos atributos de posição. -->
-    <!-- URL DE ACESSO EXTERNO PELOS APPS-->
-	<entry key='web.url'>http:/$DOMAIN</entry>
+    "<entry key='web.url'>$WEB_URL</entry>"
 </properties>
 
 EOL
 }
 
 configure_nginx() {
+    SERVER_NAME="_"
+    if [ ! -z "$DOMAIN" ]; then
+        SERVER_NAME=$DOMAIN
+    fi
     sudo tee /etc/nginx/sites-available/traccar > /dev/null <<EOL
 server {
     listen 80;
-    server_name $DOMAIN;
+    server_name $SERVER_NAME;
     location / {
         proxy_pass http://localhost:8082;
         proxy_http_version 1.1;
@@ -173,7 +186,9 @@ EOL
 }
 
 configure_ssl() {
-    sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --redirect
+    if [ ! -z "$DOMAIN" ]; then
+        sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --redirect
+    fi
 }
 
 configure_memory() {
@@ -228,8 +243,13 @@ sudo chmod +x /usr/local/bin/iniciar-traccar /usr/local/bin/parar-traccar /usr/l
 }
 
 finish_installation() {
+    URL_ACESSO="http://$IP_PUBLICO:8082"
+    if [ ! -z "$DOMAIN" ]; then
+        URL_ACESSO="https://$DOMAIN"
+    fi
     echo "Instalação concluída com sucesso!"
-    echo "Acesse via: https://$DOMAIN"
+    echo "Acesse via: $URL_ACESSO"
+    echo "Estimule o desenvolvimento de novas ferramentas, compartilhe o link do git com seus amigos e nos grupos."
 }
 
 display_banner
