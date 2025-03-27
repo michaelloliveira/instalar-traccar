@@ -65,11 +65,11 @@ get_user_input() {
     done
     while [[ -z "$DB_PASS" ]]; do
         read -sp "Digite a senha para o usuário do banco: " DB_PASS
+        echo ""
     done
     read -p "Digite seu domínio (ex: rastreamento.meudominio.com ou deixe em branco para ignorar): " DOMAIN
     echo "A memória total do servidor é: ${TOTAL_MEMORY_MB}MB"
     read -p "Digite a porcentagem da memória do servidor que deseja alocar para o Java (exemplo: 60 para 60%) (Deixe em branco para não editar o serviço): " MEMORY_PERCENT
-    echo ""
 }
 
 install_dependencies() {
