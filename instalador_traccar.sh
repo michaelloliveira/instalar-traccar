@@ -200,7 +200,6 @@ configure_memory() {
         sudo sed -i "s|ExecStart=/opt/traccar/jre/bin/java -jar tracker-server.jar conf/traccar.xml|ExecStart=/opt/traccar/jre/bin/java -Xmx${MAX_MEMORY_MB}m -jar tracker-server.jar conf/traccar.xml|" /etc/systemd/system/traccar.service
 
         sudo systemctl daemon-reload
-        sudo systemctl restart traccar
     fi
 }
 
@@ -248,8 +247,18 @@ finish_installation() {
         URL_ACESSO="https://$DOMAIN"
     fi
     echo "Instalação concluída com sucesso!"
+    if ! pgrep -x "traccar" > /dev/null
+    then
+        echo "Traccar não está rodando. Reiniciando..."
+        sudo systemctl restart traccar
+        echo "Traccar já está rodando."
+    else
+        echo "Traccar já está rodando."
+    fi
     echo "Acesse via: $URL_ACESSO"
     echo "Estimule o desenvolvimento de novas ferramentas, compartilhe o link do git com seus amigos e nos grupos."
+    
+
 }
 
 display_banner
